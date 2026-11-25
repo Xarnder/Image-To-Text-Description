@@ -76,6 +76,7 @@
 :root[data-theme="dark"] .toast { background: #294e3c; border-color: #628b72; color: #e4f5e9; }
 
 #themeToggle { white-space: nowrap; }
+#presets .preset[data-preset="everything"] { grid-column: 1 / -1; }
 #themeIcon { font-size: 1.05rem; line-height: 1; }
 .topbar .quiet.light:hover:not(:disabled) {
   background: #34464d; color: #fff; border-color: #7b939b;

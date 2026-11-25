@@ -8,6 +8,22 @@ import numpy as np
 from PIL import Image, ImageOps
 
 
+def load_image_pixels(image_path):
+    """Decode one visible photo, preserving orientation and leaving the source intact."""
+    with Image.open(image_path) as source:
+        if source.format in {"JPEG", "MPO"}:
+            # JPEGs can embed additional pictures in an MPF container. Pillow
+            # exposes these as MPO and reports n_frames > 1 / is_animated=True.
+            # Use the primary JPEG, matching the app's image preview.
+            source.seek(0)
+        elif getattr(source, "n_frames", 1) != 1:
+            raise ValueError("Use a still image; animated or multi-page files are not supported.")
+        image = ImageOps.exif_transpose(source).convert("RGBA")
+        background = Image.new("RGBA", image.size, "white")
+        image = Image.alpha_composite(background, image).convert("RGB")
+        return np.asarray(image, dtype=np.float32) / 255.0
+
+
 class VisionEngine:
     def __init__(self, runtime_directory):
         self.runtime_directory = Path(runtime_directory)
@@ -60,13 +76,7 @@ class VisionEngine:
     def describe(self, image_path, prompt, system_prompt, max_tokens):
         if self.clip is None:
             raise RuntimeError("Load a vision model before describing an image.")
-        with Image.open(image_path) as source:
-            if getattr(source, "n_frames", 1) != 1:
-                raise ValueError("Use a still image; animated or multi-page files are not supported.")
-            image = ImageOps.exif_transpose(source).convert("RGBA")
-            background = Image.new("RGBA", image.size, "white")
-            image = Image.alpha_composite(background, image).convert("RGB")
-            pixels = np.asarray(image, dtype=np.float32) / 255.0
+        pixels = load_image_pixels(image_path)
         with self.torch.inference_mode():
             tensor = self.torch.from_numpy(pixels)[None]
             result = self.generate.execute(clip=self.clip, prompt=prompt,
