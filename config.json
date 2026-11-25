@@ -1,0 +1,7 @@
+{
+  "runtime_directory": "D:\\New_ComfyUI\\ComfyUI_windows_portable_nvidia\\ComfyUI_windows_portable\\ComfyUI",
+  "python_executable": "D:\\New_ComfyUI\\ComfyUI_windows_portable_nvidia\\ComfyUI_windows_portable\\python_embeded\\python.exe",
+  "default_model": "D:\\New_ComfyUI\\ComfyUI_windows_portable_nvidia\\ComfyUI_windows_portable\\ComfyUI\\models\\text_encoders\\qwen3.5_9b_w4a8_gptq.safetensors",
+  "default_folder": "D:\\Chrome Downloads\\Good Fashion Poses\\Good Fashion Poses",
+  "port": 8790
+}

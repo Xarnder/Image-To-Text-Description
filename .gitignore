@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+data/
+verification/
+engine_smoke_result.json
+Examples/
+*.safetensors
+*.gguf
+.env
+.env.*
+!.env.example

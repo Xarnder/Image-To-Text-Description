@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Caption Studio · Local image descriptions</title>
+  <link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
+  <script src="/assets/theme.js"></script>
+  <link rel="stylesheet" href="/assets/style.css">
+  <link rel="stylesheet" href="/assets/theme.css">
+  <script src="/assets/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Caption Studio home"><img src="/assets/icon.svg" alt=""><span>Caption <strong>Studio</strong></span></a>
+    <div class="top-right"><span class="local-tag">LOCAL WORKSPACE</span><button id="themeToggle" class="quiet light" aria-label="Switch to light mode"><span id="themeIcon" aria-hidden="true">☀</span><span id="themeLabel">Light mode</span></button><button id="historyButton" class="quiet light">Batches</button><button id="settingsButton" class="quiet light">Model &amp; app</button></div>
+  </header>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="sidebar-heading"><span>WORKSPACE</span><button id="newBatch" class="icon-button" title="New batch" aria-label="New batch">＋</button></div>
+      <button id="newBatchLarge" class="new-batch">New batch</button>
+      <div class="sidebar-heading history-heading"><span>BATCH HISTORY</span><span id="jobCount">0</span></div>
+      <div id="history" class="history"><p class="muted empty-history">Your batches will appear here.</p></div>
+      <div class="privacy-note"><span class="shield">◇</span><div><strong>On your computer</strong><p>Local inference. No uploads, API keys or credits.</p></div></div>
+    </aside>
+    <main>
+      <div class="page-heading"><div><div class="eyebrow">IMAGE TO TEXT</div><h1>Batch workspace</h1><p>One folder. Your instructions. A description for every image.</p></div><span id="modelBadge" class="model-badge">Model unloaded</span></div>
+      <div id="connectionBanner" class="connection-banner" role="alert" hidden><div><strong id="connectionTitle">Local server unavailable</strong><p id="connectionMessage"></p></div><button id="reconnectButton" class="quiet">Reconnect</button></div>
+      <div id="errorBanner" class="error-banner" role="alert" hidden></div>
+      <div class="workbench">
+        <section class="setup panel" aria-label="Batch configuration">
+          <form id="batchForm">
+            <div class="eyebrow">NEW BATCH</div>
+            <div class="section-title"><span class="section-icon">▧</span><h2>Source images</h2></div>
+            <label for="folder">Image folder</label>
+            <div class="input-action"><input id="folder" required spellcheck="false" placeholder="D:\Pictures\My folder"><button type="button" id="browseSource" class="quiet">Browse</button></div>
+            <div class="source-options"><label class="check"><input type="checkbox" id="recursive" checked> Include subfolders</label><button type="button" id="scanButton" class="text-button">Scan folder</button></div>
+            <div id="scanSummary" class="scan-summary">Choose a folder to preview its images.</div>
+            <div class="divider"></div>
+            <div class="section-title"><span class="section-icon">✧</span><h2>What should it describe?</h2></div>
+            <div id="presets" class="preset-grid" aria-label="Description preset"></div>
+            <p id="presetSummary" class="field-help"></p>
+            <label for="prompt">Instructions <span class="label-note">Editable for every batch</span></label>
+            <textarea id="prompt" rows="7" required maxlength="32000"></textarea>
+            <details id="advanced">
+              <summary>Model, output &amp; advanced options</summary>
+              <div class="advanced-content">
+                <label for="modelPath">Local vision model <span class="label-note">.safetensors</span></label>
+                <input id="modelPath" required spellcheck="false">
+                <p class="field-help">Qwen3.5-9B is configured and tested. The app does not download models.</p>
+                <div class="two-fields"><div><label for="maxTokens">Maximum output tokens</label><input id="maxTokens" type="number" min="1" max="32768" value="384" required></div><div><label for="outputLabel">Output label</label><input id="outputLabel" pattern="[a-z0-9][a-z0-9_-]{0,40}" required value="pose"></div></div>
+                <label for="outputDirectory">Output folder <span class="label-note">Optional</span></label>
+                <div class="input-action"><input id="outputDirectory" placeholder="Empty = beside each image" spellcheck="false"><button type="button" id="browseOutput" class="quiet">Browse</button></div>
+                <label class="check"><input type="checkbox" id="writeTxt" checked> Save plain-text copies as well as JSON</label>
+                <label class="check"><input type="checkbox" id="force"> Regenerate matching descriptions</label>
+                <label class="check"><input type="checkbox" id="keepLoaded"> Keep the model loaded between batches</label>
+                <p class="field-help">Normally GPU memory is released when a batch ends. Keeping the model loaded speeds up the next batch.</p>
+                <label for="systemPrompt">System instructions</label>
+                <textarea id="systemPrompt" rows="4" maxlength="16000"></textarea>
+              </div>
+            </details>
+            <div class="output-hint"><span>OUTPUT FILES</span><code id="outputExample">image.png.pose.json + .txt</code><p id="compatibilityHint">Descriptions are saved beside your images.</p></div>
+            <button type="submit" id="startButton" class="primary start">Start batch</button>
+            <p class="start-note">Matching results are reused. Original images stay unchanged.</p>
+          </form>
+        </section>
+        <div class="results-column">
+          <section id="batchPanel" class="panel batch-panel" hidden aria-label="Batch progress">
+            <div class="batch-heading"><div><span class="eyebrow">CURRENT SELECTION</span><h2 id="batchTitle">Pose batch</h2></div><span id="batchStatus" class="badge">Queued</span></div>
+            <div class="metrics"><div><strong id="metricDone">0</strong><span>Generated</span></div><div><strong id="metricCached">0</strong><span>Reused</span></div><div><strong id="metricErrors">0</strong><span>Errors</span></div><div><strong id="metricRemaining">0</strong><span>Remaining</span></div></div>
+            <progress id="progress" value="0" max="100" aria-label="Batch progress"></progress>
+            <div class="progress-label"><strong id="progressText">0 of 0</strong><span id="eta"></span></div>
+            <p id="currentFile" class="current-file"></p>
+            <p id="jobError" class="job-error" hidden></p>
+            <div class="batch-actions"><div><button id="pauseButton" class="quiet" hidden>Pause after image</button><button id="resumeButton" class="quiet" hidden>Resume batch</button><button id="cancelButton" class="text-button danger" hidden>Cancel batch</button></div><div class="exports"><a id="exportJson" class="text-button" href="#">JSON</a><a id="exportCsv" class="text-button" href="#">CSV</a></div></div>
+          </section>
+          <section class="panel gallery-panel" aria-label="Image results">
+            <div class="gallery-heading"><div><h2 id="galleryTitle">Folder preview</h2><p id="gallerySubtitle">Scan a folder to see your images here.</p></div><span id="imageCount" class="count-badge">0 images</span></div>
+            <div id="emptyState" class="empty-state"><div class="empty-art"><span>▧</span><span>≡</span></div><h3>Your images will appear here</h3><p>Choose a folder, pick a focus, and review the descriptions here as they finish.</p><span>PNG · JPEG · WebP · BMP · TIFF</span></div>
+            <div id="imageGrid" class="image-grid"></div>
+            <div id="pagination" class="pagination" hidden><span id="pageRange"></span><div><button id="previousPage" class="quiet">Previous</button><button id="nextPage" class="quiet">Next</button></div></div>
+          </section>
+          <div class="workspace-footnote">A batch keeps running when this tab closes. Reopen the app to review or resume it.</div>
+        </div>
+      </div>
+    </main>
+  </div>
+  <dialog id="folderDialog" class="folder-dialog">
+    <div class="dialog-heading"><h2>Choose a folder</h2><button class="icon-button" data-close="folderDialog" aria-label="Close folder chooser">×</button></div>
+    <form id="folderLocationForm" class="input-action"><input id="folderLocation" aria-label="Folder location" spellcheck="false"><button class="quiet">Open</button></form>
+    <div class="folder-toolbar"><button id="folderDrives" class="text-button">Drives</button><button id="folderParent" class="text-button">Parent folder</button></div>
+    <p id="folderError" class="job-error" hidden></p><button id="folderReconnect" class="quiet folder-reconnect" hidden>Reconnect</button><div id="folderList" class="folder-list"></div>
+    <div class="dialog-footer"><span id="selectedFolder"></span><button id="selectFolder" class="primary">Use this folder</button></div>
+  </dialog>
+  <dialog id="detailDialog" class="detail-dialog">
+    <div class="dialog-heading"><div><h2 id="detailName">Image description</h2><span id="detailStatus" class="badge"></span></div><button class="icon-button" data-close="detailDialog" aria-label="Close image details">×</button></div>
+    <div class="detail-content"><div class="detail-image"><img id="detailImage" alt="Selected source image"></div><div class="detail-copy"><label for="detailCaption">Description</label><textarea id="detailCaption" rows="12" readonly></textarea><button id="copyCaption" class="quiet">Copy description</button><p id="detailError" class="job-error" hidden></p><div class="detail-path"><span>SOURCE IMAGE</span><code id="detailSource"></code><span>DESCRIPTION FILE</span><code id="detailOutput"></code></div></div></div>
+  </dialog>
+  <dialog id="settingsDialog" class="settings-dialog">
+    <div class="dialog-heading"><h2>Local model &amp; app</h2><button class="icon-button" data-close="settingsDialog" aria-label="Close app settings">×</button></div>
+    <p>The app runs its own model worker. It reuses your installed inference libraries and weights; the ComfyUI server and web app are not required.</p>
+    <label>Inference libraries</label><code id="runtimePath" class="path-block"></code>
+    <label>Model in memory</label><code id="loadedModelPath" class="path-block">None</code>
+    <p class="field-help">Release the model before using another GPU-heavy application. A first load can take a few minutes.</p>
+    <button id="unloadButton" class="quiet">Release GPU memory</button>
+    <div class="divider"></div><button id="shutdownButton" class="quiet danger">Stop app</button><p class="field-help">Available when no batch is active. Your saved progress remains on disk.</p>
+  </dialog>
+  <dialog id="historyDialog" class="settings-dialog"><div class="dialog-heading"><h2>Batch history</h2><button class="icon-button" data-close="historyDialog" aria-label="Close batch history">×</button></div><div id="historyModalList"></div></dialog>
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>
