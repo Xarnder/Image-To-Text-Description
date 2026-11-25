@@ -18,6 +18,16 @@ The interface starts in **dark mode**, with a dark grey background. Use **Light 
 
 **Describe everything** creates one complete image-generation prompt covering composition, the person's visible face and appearance, expression, pose, outfit, accessories, setting, objects, lighting, colours and image style. It adapts to images without people, too. Its default output limit is 1,536 tokens so detailed descriptions have room to finish; generation can take longer than the focused presets. You can edit its instructions and output limit before starting a batch.
 
+**Use character image reference** is an optional toggle beneath the instructions, off by default and available with every preset. Turn it on to append this instruction to every caption, including saved JSON/TXT, copied descriptions and batch exports:
+
+> Use the supplied character reference image for the character's identity and physical appearance, overriding any conflicting character description, while following this text prompt for the pose, expression, outfit, composition, setting, lighting, and image style.
+
+Supply the character reference image in your image generator when using the prompt. The app remembers your toggle choice for subsequent batches. Changing it updates matching cached captions without another model run; completed batch history keeps its original text. With the standard Pose preset, enabling the toggle uses the separate output label `pose-custom` to preserve the fashion-workflow caption.
+
+**Use gender-neutral language** is a separate toggle, also off by default, which works with every preset and with character-reference guidance. A hard-coded English mapping runs after generation and before saving or displaying the caption. It handles pronouns, possessives, common contractions, verb agreement, gendered person nouns and roles: for example, “She is wearing her jacket beside him” becomes “They are wearing their jacket beside them”, and “woman/man” becomes “person”. Clothing, anatomy and unrelated words such as “sheer”, “hem” and “mannequin” stay intact. The mappings and contextual grammar rules are in `neutral_language.py`; this is a deterministic English filter, not a full language parser or a filter for visual appearance cues.
+
+This applies to caption text in TXT/JSON files, copying, history and exports. JSON retains the original model text in `raw_caption` as cache metadata; use its `caption` field as the image prompt. Matching cached captions can be reformatted when either toggle changes without running the model again. The browser remembers your choices. Enabling either toggle with the standard Pose preset uses `pose-custom` to preserve the original fashion-workflow captions.
+
 If the folder chooser cannot connect, the local server may be stopped. Double-click **Launch Caption Studio.cmd**, then click **Reconnect** in the existing tab. Reconnect refreshes the session after a server restart and preserves your saved settings. It does not automatically resubmit batch requests.
 
 ## Where descriptions are saved

@@ -23,7 +23,7 @@ from PIL import Image, ImageOps
 from pydantic import BaseModel, ConfigDict, Field
 
 from jobs import JobManager
-from storage import Store, prepare_settings, scan_folder
+from storage import CHARACTER_REFERENCE_GUIDANCE, Store, prepare_settings, scan_folder
 
 
 class BatchRequest(BaseModel):
@@ -38,6 +38,8 @@ class BatchRequest(BaseModel):
     output_label: str = "pose"
     output_directory: str = ""
     write_txt: bool = True
+    character_reference: bool = False
+    gender_neutral: bool = False
     force: bool = False
     keep_loaded: bool = False
 
@@ -124,6 +126,7 @@ def create_app(config=None, data_directory=None, engine=None):
     @app.get("/api/bootstrap")
     def bootstrap():
         return {"config": config, "presets": presets, "csrf": csrf,
+                "character_reference_guidance": CHARACTER_REFERENCE_GUIDANCE,
                 "jobs": store.jobs(), "worker": manager.state()}
 
     @app.get("/api/state")

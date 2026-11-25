@@ -8,7 +8,14 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 import uuid
 
+from neutral_language import neutralize_gender
+
 EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
+CHARACTER_REFERENCE_GUIDANCE = (
+    "Use the supplied character reference image for the character's identity and physical appearance, "
+    "overriding any conflicting character description, while following this text prompt for the pose, "
+    "expression, outfit, composition, setting, lighting, and image style."
+)
 
 
 def now():
@@ -68,6 +75,8 @@ def scan_folder(folder, recursive=True):
 
 def prepare_settings(values, presets):
     settings = dict(values)
+    settings.setdefault("character_reference", False)
+    settings.setdefault("gender_neutral", False)
     preset = next((p for p in presets if p["id"] == settings["preset"]), None)
     if preset is None:
         raise ValueError("Choose a description preset.")
@@ -84,7 +93,8 @@ def prepare_settings(values, presets):
     pose = next(p for p in presets if p["id"] == "pose")
     canonical = (settings["preset"] == "pose" and settings["prompt"] == pose["prompt"]
                  and settings["system_prompt"] == pose["system_prompt"]
-                 and settings["max_tokens"] == pose["max_tokens"])
+                 and settings["max_tokens"] == pose["max_tokens"]
+                 and not settings["character_reference"] and not settings["gender_neutral"])
     if label == "pose" and not canonical:
         label = "pose-custom"
     settings["output_label"] = label
@@ -131,6 +141,11 @@ def read_cache(path, image_hash, settings):
         return None
     if not isinstance(record, dict):
         return None
+    # Keep the original model text so output guidance can change without inference.
+    # Older records contain only the unmodified caption.
+    if "raw_caption" in record or record.get("character_reference") or record.get("gender_neutral"):
+        if not isinstance(record.get("raw_caption"), str) or not record["raw_caption"].strip():
+            return None
     if (record.get("schema_version") != 1 or record.get("image_sha256") != image_hash
             or record.get("model") != settings["model"]
             or record.get("caption_prompt_sha256") != settings["prompt_hash"]
@@ -143,18 +158,26 @@ def read_cache(path, image_hash, settings):
     return record
 
 
+def format_caption(caption, settings):
+    if settings.get("character_reference", False):
+        caption = caption.rstrip() + "\n\n" + CHARACTER_REFERENCE_GUIDANCE
+    return neutralize_gender(caption) if settings.get("gender_neutral", False) else caption
+
+
 def save_description(item, settings, image_hash, caption):
     json_path, text_path = output_paths(item, settings)
     record = {"schema_version": 1, "image_filename": Path(item["path"]).name,
               "image_sha256": image_hash, "model": settings["model"],
-              "caption_prompt_sha256": settings["prompt_hash"], "caption": caption,
+              "caption_prompt_sha256": settings["prompt_hash"], "caption": format_caption(caption, settings),
+              "raw_caption": caption, "character_reference": settings.get("character_reference", False),
+              "gender_neutral": settings.get("gender_neutral", False),
               "created_at": now(), "profile": settings["preset"],
               "generation_hash": settings["generation_hash"],
               "instructions": settings["prompt"], "system_prompt": settings["system_prompt"],
               "max_tokens": settings["max_tokens"]}
     atomic_text(json_path, json.dumps(record, ensure_ascii=False, indent=2))
     if settings["write_txt"]:
-        atomic_text(text_path, caption + "\n")
+        atomic_text(text_path, record["caption"] + "\n")
     return json_path, text_path
 
 

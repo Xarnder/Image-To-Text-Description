@@ -70,6 +70,8 @@ function values() {
     prompt:$("prompt").value, system_prompt:$("systemPrompt").value, model_path:$("modelPath").value.trim(),
     max_tokens:Number($("maxTokens").value), output_label:$("outputLabel").value.trim(),
     output_directory:$("outputDirectory").value.trim(), write_txt:$("writeTxt").checked,
+    character_reference:$("characterReference").checked,
+    gender_neutral:$("genderNeutral").checked,
     force:$("force").checked, keep_loaded:$("keepLoaded").checked};
 }
 function saveDraft() {
@@ -87,20 +89,21 @@ function setPreset(id, keepInstructions=false) {
 function outputHint() {
   const p=state.presets.find(x => x.id==="pose");
   let label=$("outputLabel").value.trim() || "custom";
-  const canonical=state.preset==="pose" && p && $("prompt").value.trim()===p.prompt && $("systemPrompt").value.trim()===p.system_prompt && Number($("maxTokens").value)===p.max_tokens;
+  const canonical=state.preset==="pose" && p && $("prompt").value.trim()===p.prompt && $("systemPrompt").value.trim()===p.system_prompt && Number($("maxTokens").value)===p.max_tokens && !$("characterReference").checked && !$("genderNeutral").checked;
   const modifiedPose=label==="pose" && !canonical;
   if (modifiedPose) label="pose-custom";
   $("outputExample").textContent="image.png."+label+".json"+($("writeTxt").checked?" + .txt":"");
-  $("compatibilityHint").textContent=modifiedPose ? "Edited pose instructions use a separate file, preserving the standard fashion-workflow caption." :
+  $("compatibilityHint").textContent=modifiedPose ? "Modified pose captions use a separate file, preserving the standard fashion-workflow caption." :
     canonical && label==="pose" ? "The standard Pose preset can reuse existing .pose.json files from your fashion workflow." :
     ($("outputDirectory").value.trim() ? "Saved in your output folder, preserving subfolders." : "Saved beside each image. Different output labels keep descriptions separate.");
+  $("characterReferencePreview").hidden=!$("characterReference").checked;
 }
 function applyDraft(draft) {
   if (!draft || !state.presets.some(p=>p.id===draft.preset)) return;
   setPreset(draft.preset);
   const names={folder:"folder",prompt:"prompt",system_prompt:"systemPrompt",model_path:"modelPath",max_tokens:"maxTokens",output_label:"outputLabel",output_directory:"outputDirectory"};
   Object.entries(names).forEach(([key,id])=>{if(draft[key]!==undefined) $(id).value=draft[key];});
-  const checks={recursive:"recursive",write_txt:"writeTxt",keep_loaded:"keepLoaded"};
+  const checks={recursive:"recursive",write_txt:"writeTxt",keep_loaded:"keepLoaded",character_reference:"characterReference",gender_neutral:"genderNeutral"};
   Object.entries(checks).forEach(([key,id])=>{if(draft[key]!==undefined) $(id).checked=draft[key];});
   outputHint();
 }
@@ -252,6 +255,7 @@ async function detail(index) {
 async function boot() {
   try {
     const data=await api("/api/bootstrap");state.csrf=data.csrf;state.config=data.config;state.presets=data.presets;state.jobs=data.jobs;state.worker=data.worker;
+    $("characterReferencePreview").textContent=data.character_reference_guidance || "";
     $("folder").value=data.config.default_folder;$("modelPath").value=data.config.default_model;$("runtimePath").textContent=data.config.runtime_directory;
     setPreset("pose");
     try { applyDraft(JSON.parse(localStorage.getItem("caption-studio-draft") || "null")); } catch(_) {}

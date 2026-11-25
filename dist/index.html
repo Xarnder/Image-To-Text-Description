@@ -42,6 +42,15 @@
             <p id="presetSummary" class="field-help"></p>
             <label for="prompt">Instructions <span class="label-note">Editable for every batch</span></label>
             <textarea id="prompt" rows="7" required maxlength="32000"></textarea>
+            <div class="reference-option">
+              <label class="check" for="characterReference"><input type="checkbox" role="switch" class="switch" id="characterReference" aria-describedby="characterReferenceHelp"> Use character image reference</label>
+              <p id="characterReferenceHelp" class="field-help">Adds guidance to every caption. Supply your character reference in your image generator.</p>
+              <p id="characterReferencePreview" class="reference-preview" hidden></p>
+            </div>
+            <div class="reference-option">
+              <label class="check" for="genderNeutral"><input type="checkbox" role="switch" class="switch" id="genderNeutral" aria-describedby="genderNeutralHelp"> Use gender-neutral language</label>
+              <p id="genderNeutralHelp" class="field-help">Maps English pronouns and gendered person terms to neutral wording: “she is wearing her jacket” → “they are wearing their jacket”.</p>
+            </div>
             <details id="advanced">
               <summary>Model, output &amp; advanced options</summary>
               <div class="advanced-content">

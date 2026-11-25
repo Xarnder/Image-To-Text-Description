@@ -16,18 +16,19 @@ from PIL import Image
 
 from app import create_app
 from jobs import JobManager
-from storage import Store, digest_file, output_paths, prepare_settings, read_cache, save_description, scan_folder
+from storage import CHARACTER_REFERENCE_GUIDANCE, Store, digest_file, output_paths, prepare_settings, read_cache, save_description, scan_folder
 
 PRESETS = json.loads((ROOT / "presets.json").read_text(encoding="utf-8"))
 
 
 class FakeEngine:
-    def __init__(self, block=False, fail_names=(), load_error=False):
+    def __init__(self, block=False, fail_names=(), load_error=False, caption=None):
         self.loads = []
         self.calls = []
         self.unloads = 0
         self.fail_names = set(fail_names)
         self.load_error = load_error
+        self.caption = caption
         self.entered = threading.Event()
         self.gate = threading.Event()
         if not block:
@@ -45,7 +46,7 @@ class FakeEngine:
             raise RuntimeError("Test gate timed out")
         if Path(path).name in self.fail_names:
             raise ValueError("Test corrupt input")
-        return "Description of " + Path(path).name
+        return self.caption if self.caption is not None else "Description of " + Path(path).name
 
     def unload(self):
         self.unloads += 1
@@ -142,6 +143,25 @@ class StorageTests(Fixtures):
         self.assertEqual(self.settings(max_tokens=500)["output_label"], "pose-custom")
         self.assertIsNone(read_cache(json_path, digest_file(path), self.settings("composition")))
 
+    def test_character_reference_defaults_off_and_preserves_pose_sidecars(self):
+        path = self.image()
+        item = scan_folder(self.images)[1][0]
+        regular = self.settings()
+        self.assertFalse(regular["character_reference"])
+        self.assertFalse(regular["gender_neutral"])
+        standard_path, _ = save_description(item, regular, digest_file(path), "Standing.")
+        original = standard_path.read_bytes()
+        reference = self.settings(character_reference=True)
+        self.assertEqual(reference["output_label"], "pose-custom")
+        self.assertFalse(reference["legacy_pose_cache"])
+        reference_path, _ = save_description(item, reference, digest_file(path), "Standing.")
+        self.assertNotEqual(reference_path, standard_path)
+        self.assertEqual(standard_path.read_bytes(), original)
+        self.assertTrue(json.loads(reference_path.read_text())["caption"].endswith(CHARACTER_REFERENCE_GUIDANCE))
+        neutral = self.settings(gender_neutral=True)
+        self.assertEqual(neutral["output_label"], "pose-custom")
+        self.assertFalse(neutral["legacy_pose_cache"])
+
     def test_separate_outputs_and_corrupt_cache(self):
         path = self.image("sub/item.png")
         item = scan_folder(self.images)[1][0]
@@ -171,6 +191,41 @@ class StorageTests(Fixtures):
 
 
 class WorkerTests(Fixtures):
+    def test_character_reference_cached_on_off_and_history_without_extra_inference(self):
+        path = self.image()
+        item = scan_folder(self.images)[1][0]
+        settings = self.settings("everything")
+        json_path, txt_path = save_description(item, settings, digest_file(path), "A person beside a window.")
+        # Simulate a caption produced before the toggle existed.
+        legacy = json.loads(json_path.read_text())
+        legacy.pop("raw_caption")
+        legacy.pop("character_reference")
+        json_path.write_text(json.dumps(legacy))
+        engine = FakeEngine()
+        manager = self.manager(engine)
+        history = []
+        for enabled in [True, True, False]:
+            with self.subTest(enabled=enabled):
+                job = self.job(self.settings("everything", character_reference=enabled))
+                manager.wake.set()
+                self.assertEqual(self.wait(job)["counts"], {"cached": 1})
+                caption = self.store.items(job)[0]["caption"]
+                self.assertEqual(caption.count(CHARACTER_REFERENCE_GUIDANCE), int(enabled))
+                if enabled:
+                    self.assertTrue(caption.endswith(CHARACTER_REFERENCE_GUIDANCE))
+                else:
+                    self.assertEqual(caption, "A person beside a window.")
+                record = json.loads(json_path.read_text())
+                self.assertEqual(record["caption"], caption)
+                self.assertEqual(record["raw_caption"], "A person beside a window.")
+                self.assertEqual(record["character_reference"], enabled)
+                self.assertEqual(txt_path.read_text().strip(), caption)
+                history.append((job, caption))
+        self.assertEqual(engine.loads, [])
+        self.assertEqual(engine.calls, [])
+        for job, caption in history:
+            self.assertEqual(self.store.items(job)[0]["caption"], caption)
+
     def test_one_model_load_for_batch_and_cache_only_rerun(self):
         for name in ["one.png", "two.png", "three.png"]:
             self.image(name)
@@ -265,8 +320,8 @@ class WorkerTests(Fixtures):
 
 
 class ApiTests(Fixtures):
-    def client(self):
-        application = create_app(config=self.config, data_directory=self.root / "api-data", engine=FakeEngine())
+    def client(self, engine=None):
+        application = create_app(config=self.config, data_directory=self.root / "api-data", engine=engine or FakeEngine())
         client = TestClient(application, base_url="http://127.0.0.1:8799")
         client.__enter__()
         self.addCleanup(client.__exit__, None, None, None)
@@ -316,6 +371,85 @@ class ApiTests(Fixtures):
         csv = client.get("/api/jobs/" + job["id"] + "/export?format=csv")
         self.assertIn("'=formula.png", csv.text)
         self.assertIn("attachment", csv.headers["content-disposition"])
+
+    def test_character_reference_api_outputs_and_default_off(self):
+        self.image()
+        client = self.client()
+        headers = self.connect(client)
+        bootstrap = client.get("/api/bootstrap").json()
+        self.assertEqual(bootstrap["character_reference_guidance"], CHARACTER_REFERENCE_GUIDANCE)
+        for enabled in [True, False]:
+            with self.subTest(enabled=enabled):
+                payload = self.values("everything")
+                if enabled:
+                    payload["character_reference"] = True
+                response = client.post("/api/jobs", json=payload, headers=headers)
+                self.assertEqual(response.status_code, 200, response.text)
+                job = response.json()
+                self.assertEqual(job["settings"]["character_reference"], enabled)
+                deadline = time.monotonic() + 5
+                while time.monotonic() < deadline:
+                    result = client.get("/api/jobs/" + job["id"]).json()
+                    if result["status"] == "completed":
+                        break
+                    time.sleep(0.02)
+                self.assertEqual(result["status"], "completed")
+                export = client.get("/api/jobs/" + job["id"] + "/export?format=json").json()
+                image = export["images"][0]
+                expected = "Description of one.png" + ("\n\n" + CHARACTER_REFERENCE_GUIDANCE if enabled else "")
+                self.assertEqual(image["caption"], expected)
+                self.assertEqual(client.get("/api/items/" + str(image["id"])).json()["caption"], expected)
+                self.assertEqual(json.loads(Path(image["output_json"]).read_text())["caption"], expected)
+                self.assertEqual(Path(image["output_txt"]).read_text().strip(), expected)
+                csv = client.get("/api/jobs/" + job["id"] + "/export?format=csv").text
+                self.assertEqual(CHARACTER_REFERENCE_GUIDANCE in csv, enabled)
+
+    def test_gender_neutral_generated_cached_exports_and_both_toggles(self):
+        self.image()
+        original = "She is a woman. She wears her jacket beside him. He holds his hat."
+        neutral = "They are a person. They wear their jacket beside them. They hold their hat."
+        engine = FakeEngine(caption=original)
+        client = self.client(engine)
+        headers = self.connect(client)
+        history = []
+        for gender_neutral, character_reference in [(True, False), (True, True), (False, True), (False, False)]:
+            with self.subTest(gender_neutral=gender_neutral, character_reference=character_reference):
+                payload = self.values("everything", character_reference=character_reference)
+                if gender_neutral:
+                    payload["gender_neutral"] = True
+                response = client.post("/api/jobs", json=payload, headers=headers)
+                self.assertEqual(response.status_code, 200, response.text)
+                job = response.json()
+                self.assertEqual(job["settings"]["gender_neutral"], gender_neutral)
+                deadline = time.monotonic() + 5
+                while time.monotonic() < deadline:
+                    result = client.get("/api/jobs/" + job["id"]).json()
+                    if result["status"] == "completed":
+                        break
+                    time.sleep(0.02)
+                self.assertEqual(result["status"], "completed")
+                self.assertEqual(result["counts"], {"done" if not history else "cached": 1})
+                exported = client.get("/api/jobs/" + job["id"] + "/export?format=json").json()
+                item = exported["images"][0]
+                expected = neutral if gender_neutral else original
+                if character_reference:
+                    expected += "\n\n" + CHARACTER_REFERENCE_GUIDANCE
+                self.assertEqual(item["caption"], expected)
+                self.assertEqual(client.get("/api/items/" + str(item["id"])).json()["caption"], expected)
+                record = json.loads(Path(item["output_json"]).read_text())
+                self.assertEqual(record["caption"], expected)
+                self.assertEqual(record["raw_caption"], original)
+                self.assertEqual(record["gender_neutral"], gender_neutral)
+                self.assertEqual(Path(item["output_txt"]).read_text().strip(), expected)
+                csv_text = client.get("/api/jobs/" + job["id"] + "/export?format=csv").text
+                self.assertIn(neutral if gender_neutral else original, csv_text)
+                if gender_neutral:
+                    self.assertNotIn("She", csv_text)
+                    self.assertNotIn("woman", csv_text)
+                history.append((item["id"], expected))
+        self.assertEqual(len(engine.calls), 1)
+        for item_id, expected in history:
+            self.assertEqual(client.get("/api/items/" + str(item_id)).json()["caption"], expected)
 
 
 if __name__ == "__main__":

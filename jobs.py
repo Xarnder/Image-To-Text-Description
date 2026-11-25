@@ -2,7 +2,7 @@ import threading
 import time
 
 from engine import VisionEngine
-from storage import atomic_text, digest_file, now, output_paths, read_cache, save_description
+from storage import atomic_text, digest_file, format_caption, now, output_paths, read_cache, save_description
 
 
 class JobManager:
@@ -110,9 +110,15 @@ class JobManager:
                 json_path, txt_path = output_paths(item, settings)
                 cached = None if settings["force"] else read_cache(json_path, source_hash, settings)
                 if cached:
-                    if settings["write_txt"]:
-                        atomic_text(txt_path, cached["caption"] + "\n")
-                    self.store.update_item(item["id"], status="cached", caption=cached["caption"],
+                    raw_caption = cached.get("raw_caption", cached["caption"])
+                    caption = format_caption(raw_caption, settings)
+                    if (caption != cached["caption"] or any(
+                            bool(cached.get(option)) != bool(settings.get(option))
+                            for option in ("character_reference", "gender_neutral"))):
+                        save_description(item, settings, source_hash, raw_caption)
+                    elif settings["write_txt"]:
+                        atomic_text(txt_path, caption + "\n")
+                    self.store.update_item(item["id"], status="cached", caption=caption,
                         source_sha256=source_hash, output_json=str(json_path),
                         output_txt=str(txt_path) if settings["write_txt"] else "", seconds=0)
                     continue
@@ -135,7 +141,7 @@ class JobManager:
                 if digest_file(item["path"]) != source_hash:
                     raise ValueError("The image changed while it was being described. Resume to retry it.")
                 save_description(item, settings, source_hash, caption)
-                self.store.update_item(item["id"], status="done", caption=caption,
+                self.store.update_item(item["id"], status="done", caption=format_caption(caption, settings),
                     source_sha256=source_hash, output_json=str(json_path),
                     output_txt=str(txt_path) if settings["write_txt"] else "", seconds=elapsed)
             except Exception as error:

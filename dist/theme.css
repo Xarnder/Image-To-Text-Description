@@ -77,6 +77,20 @@
 
 #themeToggle { white-space: nowrap; }
 #presets .preset[data-preset="everything"] { grid-column: 1 / -1; }
+.reference-option { margin-top: 16px; }
+.reference-option .check { font-weight: 600; }
+input[type="checkbox"].switch {
+  appearance: none; width: 34px; height: 20px; margin: 0; padding: 2px;
+  border: 1px solid #7b858c; border-radius: 12px; background: #68747c;
+  cursor: pointer; transition: background .15s;
+}
+input[type="checkbox"].switch::before {
+  content: ""; display: block; width: 14px; height: 14px; border-radius: 50%;
+  background: #fff; transition: transform .15s;
+}
+input[type="checkbox"].switch:checked { background: var(--green); border-color: var(--green); }
+input[type="checkbox"].switch:checked::before { transform: translateX(14px); }
+.reference-preview { margin-top: 10px; padding-left: 12px; border-left: 3px solid var(--green); font-size: .8rem; line-height: 1.6; color: var(--muted); }
 #themeIcon { font-size: 1.05rem; line-height: 1; }
 .topbar .quiet.light:hover:not(:disabled) {
   background: #34464d; color: #fff; border-color: #7b939b;
